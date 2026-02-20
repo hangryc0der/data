@@ -1,0 +1,37 @@
+Category,Rank,Fund House,Flagship Fund,Approx AUM (Cr),Data Notes
+Large Cap,1,ICICI Prudential,ICICI Pru Bluechip Fund,~₹58000,Q4 CY2025 estimate
+Large Cap,2,SBI,SBI Bluechip Fund,~₹55637,Q4 CY2025 estimate
+Large Cap,3,Nippon India,Nippon India Large Cap Fund,~₹50000,Q4 CY2025 estimate
+Hybrid,1,ICICI Prudential,BAF + Aggressive Hybrid,~₹181000,Q4 CY2025 estimate
+Hybrid,2,SBI,Equity Hybrid + BAF,~₹142000,Q4 CY2025 estimate
+Hybrid,3,HDFC,HDFC BAF + Hybrid Equity,~₹127000,Q4 CY2025 estimate
+Focused,1,SBI,SBI Focused Equity Fund,~₹29000,Q4 CY2025 estimate
+Focused,2,ICICI Prudential,ICICI Pru Focused Equity Fund,~₹13000,Q4 CY2025 estimate
+Focused,3,Nippon India,Nippon India Focused Fund,~₹8712,Q4 CY2025 estimate
+Mid Cap,1,HDFC,HDFC Mid-Cap Opportunities Fund,~₹84800,Q4 CY2025 estimate
+Mid Cap,2,Kotak,Kotak Emerging Equity Fund,~₹47000,Q4 CY2025 estimate
+Mid Cap,3,Nippon India,Nippon India Growth Fund,~₹39300,Q4 CY2025 estimate
+Small Cap,1,Nippon India,Nippon India Small Cap Fund,~₹68971,Q4 CY2025 estimate
+Small Cap,2,HDFC,HDFC Small Cap Fund,~₹38020,Q4 CY2025 estimate
+Small Cap,3,Quant,Quant Small Cap Fund,~₹30170,Q4 CY2025 estimate
+Flexi Cap,1,PPFAS (Parag Parikh),Parag Parikh Flexi Cap Fund,~₹129000,Q4 CY2025 estimate
+Flexi Cap,2,HDFC,HDFC Flexi Cap Fund,~₹62000,Q4 CY2025 estimate
+Flexi Cap,3,UTI,UTI Flexi Cap Fund,~₹35000,Q4 CY2025 estimate - contested with Kotak
+Index (Passive Equity),1,SBI,SBI Nifty 50 ETF + Index Funds,~₹358000,Includes ETFs; largely EPFO-driven
+Index (Passive Equity),2,UTI,UTI Nifty 50 Index Fund,~₹118000,Includes ETFs
+Index (Passive Equity),3,Nippon India,Nippon India ETF Nifty BeES,~₹111000,Includes ETFs
+Contra,1,SBI,SBI Contra Fund,~₹49837,Q4 CY2025 estimate; only 3 AMCs in category
+Contra,2,Invesco,Invesco India Contra Fund,~₹15000,Q4 CY2025 estimate
+Contra,3,Kotak,Kotak India EQ Contra Fund,~₹4000,Q4 CY2025 estimate
+Thematic,1,SBI,SBI Infrastructure + Consumption Funds,N/A - aggregate,Largest AMC; thematic AUM highly fluid
+Thematic,2,ICICI Prudential,ICICI Pru Infrastructure + BHARAT 22 FoF,N/A - aggregate,Diverse thematic shelf
+Thematic,3,Nippon India,Nippon Power & Infra + Consumption Funds,N/A - aggregate,Strong thematic range; validate at AMFI
+Multi Cap,1,Nippon India,Nippon India Multi Cap Fund,~₹50352,Q4 CY2025 estimate
+Multi Cap,2,SBI,SBI Multi Cap Fund,~₹22000,Q4 CY2025 estimate
+Multi Cap,3,Kotak,Kotak Multicap Fund,~₹16000,Q4 CY2025 estimate
+Value,1,ICICI Prudential,ICICI Pru Value Discovery Fund,~₹60390,Q4 CY2025 estimate
+Value,2,HSBC,HSBC Value Fund,~₹13000,Q4 CY2025 estimate
+Value,3,Bandhan,Bandhan Value Fund,~₹6000,Q4 CY2025 estimate
+ELSS,1,Axis,Axis ELSS Tax Saver Fund,~₹34000,Q4 CY2025 estimate
+ELSS,2,SBI,SBI Long Term Equity Fund,~₹25734,Q4 CY2025 estimate
+ELSS,3,Mirae Asset,Mirae Asset ELSS Tax Saver Fund,~₹22411,Q4 CY2025 estimate
