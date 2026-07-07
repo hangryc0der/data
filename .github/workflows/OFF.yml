@@ -1,0 +1,135 @@
+name: Fetch India OFF Products (English) via API
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'   # weekly, Monday 03:00 UTC
+
+jobs:
+  fetch-india-products:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Write fetch script
+        run: |
+          cat <<'EOF' > fetch_india_products.py
+          import csv
+          import sys
+          import time
+          import requests
+
+          BASE_URL = "https://in.openfoodfacts.org/cgi/search.pl"
+          FIELDS = [
+              "code", "product_name", "brands", "categories",
+              "energy-kcal_100g", "carbohydrates_100g", "sugars_100g", "fiber_100g",
+              "proteins_100g", "fat_100g", "saturated-fat_100g", "salt_100g",
+              "nova_group", "nutriscore_grade", "ingredients_text", "url",
+              "last_modified_t",
+          ]
+
+          HEADERS = {
+              # OFF asks all API consumers to identify their app with a custom User-Agent
+              "User-Agent": "IndiaProductsFetcher/1.0 (contact: abracadabra@gmail.com)"
+          }
+
+          PAGE_SIZE = 100
+          OUTPUT_FILE = "india_products.csv"
+
+
+          def fetch_page(page):
+              params = {
+                  "action": "process",
+                  "json": 1,
+                  "page_size": PAGE_SIZE,
+                  "page": page,
+                  "fields": ",".join(FIELDS),
+                  "lc": "en",
+                  # restrict to products whose language is tagged English
+                  "tagtype_0": "languages",
+                  "tag_contains_0": "contains",
+                  "tag_0": "en:english",
+              }
+              for attempt in range(5):
+                  resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=30)
+                  if resp.status_code == 200:
+                      return resp.json()
+                  if resp.status_code in (429, 503):
+                      wait = 5 * (attempt + 1)
+                      print(f"Rate limited (HTTP {resp.status_code}), waiting {wait}s...", file=sys.stderr)
+                      time.sleep(wait)
+                      continue
+                  resp.raise_for_status()
+              raise RuntimeError(f"Failed to fetch page {page} after retries")
+
+
+          def main():
+              seen_codes = set()
+              rows_written = 0
+
+              with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
+                  writer = csv.DictWriter(f, fieldnames=FIELDS)
+                  writer.writeheader()
+
+                  page = 1
+                  while True:
+                      data = fetch_page(page)
+                      products = data.get("products", [])
+                      if not products:
+                          break
+
+                      for p in products:
+                          code = (p.get("code") or "").strip()
+                          name = (p.get("product_name") or "").strip()
+                          if not code or not name or code in seen_codes:
+                              continue
+                          seen_codes.add(code)
+
+                          row = {field: p.get(field, "") for field in FIELDS}
+                          # ensure a product URL even if OFF omits it for this record
+                          if not row.get("url"):
+                              row["url"] = f"https://world.openfoodfacts.org/product/{code}"
+                          writer.writerow(row)
+                          rows_written += 1
+
+                      print(f"Page {page}: fetched {len(products)} products, total written so far: {rows_written}")
+
+                      if len(products) < PAGE_SIZE:
+                          break
+                      page += 1
+                      time.sleep(1)  # be polite between pages
+
+              print(f"Done. Total rows written: {rows_written}")
+
+
+          if __name__ == "__main__":
+              main()
+          EOF
+
+      - name: Run fetch script
+        run: python fetch_india_products.py
+
+      - name: Upload CSV as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: india-products-csv
+          path: india_products.csv
+          retention-days: 30
+
+      - name: Commit CSV back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add india_products.csv
+          git diff --cached --quiet || git commit -m "Update India OFF products data ($(date -u +%Y-%m-%d))"
+          git push
