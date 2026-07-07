@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: '0 3 * * 1'   # weekly, Monday 03:00 UTC
 
+permissions:
+  contents: write
+  
 jobs:
   fetch-india-products:
     runs-on: ubuntu-latest
