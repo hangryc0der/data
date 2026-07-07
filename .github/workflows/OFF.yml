@@ -3,7 +3,7 @@ name: Fetch India OFF Products (English) via API
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 3 * * 1'   # weekly, Monday 03:00 UTC
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: write
@@ -58,10 +58,11 @@ jobs:
           ]
 
           HEADERS = {
-              "User-Agent": "IndiaProductsFetcher/1.0 (contact: your-email@example.com)"
+              "User-Agent": "IndiaProductsFetcher/1.0 (contact: angrycoder@gmail.com; +https://github.com/angrycoder/data)"
           }
 
-          PAGE_SIZE = 1000
+          PAGE_SIZE = 250          # smaller pages, less burst-like
+          DELAY_BETWEEN_PAGES = 3  # seconds
           OUTPUT_FILE = "india_products.csv"
 
 
@@ -71,13 +72,13 @@ jobs:
                   "page_size": PAGE_SIZE,
                   "page": page,
               }
-              for attempt in range(5):
+              for attempt in range(6):
                   resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=60)
                   if resp.status_code == 200:
                       return resp.json()
-                  if resp.status_code in (429, 503):
-                      wait = 5 * (attempt + 1)
-                      print(f"Rate limited (HTTP {resp.status_code}), waiting {wait}s...", file=sys.stderr)
+                  if resp.status_code in (401, 429, 503):
+                      wait = 10 * (attempt + 1)
+                      print(f"Blocked/rate-limited (HTTP {resp.status_code}) on page {page}, waiting {wait}s (attempt {attempt+1}/6)...", file=sys.stderr)
                       time.sleep(wait)
                       continue
                   resp.raise_for_status()
@@ -138,12 +139,13 @@ jobs:
                           writer.writerow(row)
                           rows_written += 1
 
+                      f.flush()
                       print(f"Page {page}/{total_pages}: fetched {len(products)} products, total written so far: {rows_written}")
 
                       page += 1
                       if page > total_pages:
                           break
-                      time.sleep(1)
+                      time.sleep(DELAY_BETWEEN_PAGES)
                       data = fetch_page(page)
 
               print(f"Done. Total rows written: {rows_written}")
