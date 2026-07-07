@@ -1,4 +1,4 @@
-name: Fetch India OFF Products (English) via API
+name: Fetch India OFF Products (English, recently modified) via API
 
 on:
   workflow_dispatch:
@@ -32,11 +32,14 @@ jobs:
           import csv
           import sys
           import time
-          import math
           from datetime import datetime, timezone
           import requests
 
           BASE_URL = "https://in.openfoodfacts.org/api/v2/search"
+
+          # Only fetch products modified after this timestamp
+          CUTOFF_ISO = "2026-05-26T08:33:54Z"
+          CUTOFF_T = int(datetime.strptime(CUTOFF_ISO, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
 
           REQUEST_FIELDS = [
               "code", "product_name_en", "brands", "categories",
@@ -58,11 +61,11 @@ jobs:
           ]
 
           HEADERS = {
-              "User-Agent": "IndiaProductsFetcher/1.0 (contact: angrycoder@gmail.com; +https://github.com/angrycoder/data)"
+              "User-Agent": "IndiaProductsFetcher/1.0 (contact: your-email@example.com; +https://github.com/angryc0der/data)"
           }
 
-          PAGE_SIZE = 250          # smaller pages, less burst-like
-          DELAY_BETWEEN_PAGES = 3  # seconds
+          PAGE_SIZE = 250
+          DELAY_BETWEEN_PAGES = 3
           OUTPUT_FILE = "india_products.csv"
 
 
@@ -71,6 +74,7 @@ jobs:
                   "fields": ",".join(REQUEST_FIELDS),
                   "page_size": PAGE_SIZE,
                   "page": page,
+                  "sort_by": "last_modified_t",
               }
               for attempt in range(6):
                   resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=60)
@@ -97,24 +101,39 @@ jobs:
           def main():
               seen_codes = set()
               rows_written = 0
-
-              first = fetch_page(1)
-              total_count = first.get("count", 0)
-              total_pages = max(1, math.ceil(total_count / PAGE_SIZE))
-              print(f"Total matching products reported by API: {total_count} across {total_pages} page(s)")
+              page = 1
+              sort_direction_confirmed = None  # True = descending (newest first)
 
               with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
                   writer = csv.DictWriter(f, fieldnames=OUTPUT_FIELDS)
                   writer.writeheader()
 
-                  page = 1
-                  data = first
                   while True:
+                      data = fetch_page(page)
                       products = data.get("products", [])
                       if not products:
+                          print("No more products returned, stopping.")
                           break
 
+                      # confirm sort direction using the first page
+                      if sort_direction_confirmed is None and len(products) >= 2:
+                          first_t = products[0].get("last_modified_t", 0) or 0
+                          last_t = products[-1].get("last_modified_t", 0) or 0
+                          sort_direction_confirmed = first_t >= last_t
+                          direction = "descending (newest first)" if sort_direction_confirmed else "ascending (oldest first)"
+                          print(f"Detected sort order: {direction}")
+
+                      page_min_t = None
                       for p in products:
+                          ts = p.get("last_modified_t")
+                          ts_int = int(ts) if ts else 0
+                          if page_min_t is None or ts_int < page_min_t:
+                              page_min_t = ts_int
+
+                          # safety-net filter: only keep rows actually after the cutoff
+                          if ts_int < CUTOFF_T:
+                              continue
+
                           code = (p.get("code") or "").strip()
                           name = (p.get("product_name_en") or "").strip()
                           if not code or not name or code in seen_codes:
@@ -131,7 +150,7 @@ jobs:
                               "nutriscore_grade": p.get("nutriscore_grade", ""),
                               "ingredients_text": (p.get("ingredients_text_en") or "").strip(),
                               "url": p.get("url") or f"https://world.openfoodfacts.org/product/{code}",
-                              "last_modified_datetime": to_iso(p.get("last_modified_t")),
+                              "last_modified_datetime": to_iso(ts),
                           }
                           for key in NUTRIMENT_KEYS:
                               row[key] = nutriments.get(key, "")
@@ -140,13 +159,21 @@ jobs:
                           rows_written += 1
 
                       f.flush()
-                      print(f"Page {page}/{total_pages}: fetched {len(products)} products, total written so far: {rows_written}")
+                      print(f"Page {page}: fetched {len(products)} products, total matching written so far: {rows_written}")
+
+                      # Early exit: if sorted newest-first and this whole page is already
+                      # older than the cutoff, every subsequent page will be too — stop.
+                      if sort_direction_confirmed and page_min_t is not None and page_min_t < CUTOFF_T:
+                          all_older = all((p.get("last_modified_t") or 0) < CUTOFF_T for p in products)
+                          if all_older:
+                              print(f"Reached products older than cutoff ({CUTOFF_ISO}) on page {page}, stopping early.")
+                              break
+
+                      if len(products) < PAGE_SIZE:
+                          break
 
                       page += 1
-                      if page > total_pages:
-                          break
                       time.sleep(DELAY_BETWEEN_PAGES)
-                      data = fetch_page(page)
 
               print(f"Done. Total rows written: {rows_written}")
 
