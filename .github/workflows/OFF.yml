@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: write
-  
+
 jobs:
   fetch-india-products:
     runs-on: ubuntu-latest
@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,41 +32,47 @@ jobs:
           import csv
           import sys
           import time
+          import math
+          from datetime import datetime, timezone
           import requests
 
-          BASE_URL = "https://in.openfoodfacts.org/cgi/search.pl"
-          FIELDS = [
+          BASE_URL = "https://in.openfoodfacts.org/api/v2/search"
+
+          REQUEST_FIELDS = [
+              "code", "product_name_en", "brands", "categories",
+              "nutriments", "nova_group", "nutriscore_grade",
+              "ingredients_text_en", "url", "last_modified_t",
+          ]
+
+          OUTPUT_FIELDS = [
               "code", "product_name", "brands", "categories",
               "energy-kcal_100g", "carbohydrates_100g", "sugars_100g", "fiber_100g",
               "proteins_100g", "fat_100g", "saturated-fat_100g", "salt_100g",
               "nova_group", "nutriscore_grade", "ingredients_text", "url",
-              "last_modified_t",
+              "last_modified_datetime",
+          ]
+
+          NUTRIMENT_KEYS = [
+              "energy-kcal_100g", "carbohydrates_100g", "sugars_100g", "fiber_100g",
+              "proteins_100g", "fat_100g", "saturated-fat_100g", "salt_100g",
           ]
 
           HEADERS = {
-              # OFF asks all API consumers to identify their app with a custom User-Agent
-              "User-Agent": "IndiaProductsFetcher/1.0 (contact: abracadabra@gmail.com)"
+              "User-Agent": "IndiaProductsFetcher/1.0 (contact: your-email@example.com)"
           }
 
-          PAGE_SIZE = 100
+          PAGE_SIZE = 1000
           OUTPUT_FILE = "india_products.csv"
 
 
           def fetch_page(page):
               params = {
-                  "action": "process",
-                  "json": 1,
+                  "fields": ",".join(REQUEST_FIELDS),
                   "page_size": PAGE_SIZE,
                   "page": page,
-                  "fields": ",".join(FIELDS),
-                  "lc": "en",
-                  # restrict to products whose language is tagged English
-                  "tagtype_0": "languages",
-                  "tag_contains_0": "contains",
-                  "tag_0": "en:english",
               }
               for attempt in range(5):
-                  resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=30)
+                  resp = requests.get(BASE_URL, params=params, headers=HEADERS, timeout=60)
                   if resp.status_code == 200:
                       return resp.json()
                   if resp.status_code in (429, 503):
@@ -76,41 +84,67 @@ jobs:
               raise RuntimeError(f"Failed to fetch page {page} after retries")
 
 
+          def to_iso(ts):
+              if not ts:
+                  return ""
+              try:
+                  return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+              except (ValueError, TypeError):
+                  return ""
+
+
           def main():
               seen_codes = set()
               rows_written = 0
 
+              first = fetch_page(1)
+              total_count = first.get("count", 0)
+              total_pages = max(1, math.ceil(total_count / PAGE_SIZE))
+              print(f"Total matching products reported by API: {total_count} across {total_pages} page(s)")
+
               with open(OUTPUT_FILE, "w", newline="", encoding="utf-8") as f:
-                  writer = csv.DictWriter(f, fieldnames=FIELDS)
+                  writer = csv.DictWriter(f, fieldnames=OUTPUT_FIELDS)
                   writer.writeheader()
 
                   page = 1
+                  data = first
                   while True:
-                      data = fetch_page(page)
                       products = data.get("products", [])
                       if not products:
                           break
 
                       for p in products:
                           code = (p.get("code") or "").strip()
-                          name = (p.get("product_name") or "").strip()
+                          name = (p.get("product_name_en") or "").strip()
                           if not code or not name or code in seen_codes:
                               continue
                           seen_codes.add(code)
 
-                          row = {field: p.get(field, "") for field in FIELDS}
-                          # ensure a product URL even if OFF omits it for this record
-                          if not row.get("url"):
-                              row["url"] = f"https://world.openfoodfacts.org/product/{code}"
+                          nutriments = p.get("nutriments") or {}
+                          row = {
+                              "code": code,
+                              "product_name": name,
+                              "brands": p.get("brands", ""),
+                              "categories": p.get("categories", ""),
+                              "nova_group": p.get("nova_group", ""),
+                              "nutriscore_grade": p.get("nutriscore_grade", ""),
+                              "ingredients_text": (p.get("ingredients_text_en") or "").strip(),
+                              "url": p.get("url") or f"https://world.openfoodfacts.org/product/{code}",
+                              "last_modified_datetime": to_iso(p.get("last_modified_t")),
+                          }
+                          for key in NUTRIMENT_KEYS:
+                              row[key] = nutriments.get(key, "")
+
                           writer.writerow(row)
                           rows_written += 1
 
-                      print(f"Page {page}: fetched {len(products)} products, total written so far: {rows_written}")
+                      print(f"Page {page}/{total_pages}: fetched {len(products)} products, total written so far: {rows_written}")
 
-                      if len(products) < PAGE_SIZE:
-                          break
                       page += 1
-                      time.sleep(1)  # be polite between pages
+                      if page > total_pages:
+                          break
+                      time.sleep(1)
+                      data = fetch_page(page)
 
               print(f"Done. Total rows written: {rows_written}")
 
