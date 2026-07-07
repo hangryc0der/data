@@ -18,12 +18,20 @@ jobs:
           curl -L https://install.duckdb.org | sh
           echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
 
+      - name: Configure Hugging Face token
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p ~/.cache/huggingface
+          printf '%s' "$HF_TOKEN" > ~/.cache/huggingface/token
+          chmod 600 ~/.cache/huggingface/token
+
       - name: Write query file
         run: |
           cat <<'EOF' > query.sql
           CREATE OR REPLACE SECRET hf_token (
               TYPE huggingface,
-              TOKEN getenv('HF_TOKEN')
+              PROVIDER credential_chain
           );
 
           SET http_retries = 6;
@@ -33,7 +41,6 @@ jobs:
 
           COPY (
             WITH india_en_raw AS (
-              -- Filter by country AND language up front — cheapest possible scan
               SELECT
                 code,
                 brands,
@@ -51,20 +58,20 @@ jobs:
             india_extracted AS (
               SELECT
                 code,
-                list_filter(product_name, x -> x.lang = 'en')[1].text AS product_name,
+                list_filter(product_name, lambda x: x.lang = 'en')[1].text AS product_name,
                 brands,
                 categories,
-                list_filter(nutriments, n -> n.name = 'energy-kcal')[1]."100g" AS "energy-kcal_100g",
-                list_filter(nutriments, n -> n.name = 'carbohydrates')[1]."100g" AS carbohydrates_100g,
-                list_filter(nutriments, n -> n.name = 'sugars')[1]."100g" AS sugars_100g,
-                list_filter(nutriments, n -> n.name = 'fiber')[1]."100g" AS fiber_100g,
-                list_filter(nutriments, n -> n.name = 'proteins')[1]."100g" AS proteins_100g,
-                list_filter(nutriments, n -> n.name = 'fat')[1]."100g" AS fat_100g,
-                list_filter(nutriments, n -> n.name = 'saturated-fat')[1]."100g" AS "saturated-fat_100g",
-                list_filter(nutriments, n -> n.name = 'salt')[1]."100g" AS salt_100g,
+                list_filter(nutriments, lambda n: n.name = 'energy-kcal')[1]."100g" AS "energy-kcal_100g",
+                list_filter(nutriments, lambda n: n.name = 'carbohydrates')[1]."100g" AS carbohydrates_100g,
+                list_filter(nutriments, lambda n: n.name = 'sugars')[1]."100g" AS sugars_100g,
+                list_filter(nutriments, lambda n: n.name = 'fiber')[1]."100g" AS fiber_100g,
+                list_filter(nutriments, lambda n: n.name = 'proteins')[1]."100g" AS proteins_100g,
+                list_filter(nutriments, lambda n: n.name = 'fat')[1]."100g" AS fat_100g,
+                list_filter(nutriments, lambda n: n.name = 'saturated-fat')[1]."100g" AS "saturated-fat_100g",
+                list_filter(nutriments, lambda n: n.name = 'salt')[1]."100g" AS salt_100g,
                 nova_group,
                 nutriscore_grade,
-                list_filter(ingredients_text, x -> x.lang = 'en')[1].text AS ingredients_text,
+                list_filter(ingredients_text, lambda x: x.lang = 'en')[1].text AS ingredients_text,
                 'https://world.openfoodfacts.org/product/' || code AS url,
                 strftime(to_timestamp(last_modified_t), '%Y-%m-%dT%H:%M:%SZ') AS last_modified_datetime
               FROM india_en_raw
@@ -80,8 +87,6 @@ jobs:
           EOF
 
       - name: Run query
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: duckdb < query.sql
 
       - name: Upload CSV as workflow artifact
