@@ -1,0 +1,100 @@
+name: Fetch India OFF Products (English) from Hugging Face
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'   # weekly, Monday 03:00 UTC
+
+jobs:
+  fetch-india-products:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install DuckDB CLI
+        run: |
+          curl -L https://install.duckdb.org | sh
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Write query file
+        run: |
+          cat <<'EOF' > query.sql
+          CREATE OR REPLACE SECRET hf_token (
+              TYPE huggingface,
+              TOKEN getenv('HF_TOKEN')
+          );
+
+          SET http_retries = 6;
+          SET http_retry_wait_ms = 3000;
+          SET http_retry_backoff = 2;
+          SET threads = 4;
+
+          COPY (
+            WITH india_en_raw AS (
+              -- Filter by country AND language up front — cheapest possible scan
+              SELECT
+                code,
+                brands,
+                categories,
+                nova_group,
+                nutriscore_grade,
+                product_name,
+                ingredients_text,
+                nutriments,
+                last_modified_t
+              FROM read_parquet('hf://datasets/openfoodfacts/product-database@~parquet/default/food/*.parquet')
+              WHERE list_contains(countries_tags, 'en:india')
+                AND lang = 'en'
+            ),
+            india_extracted AS (
+              SELECT
+                code,
+                list_filter(product_name, x -> x.lang = 'en')[1].text AS product_name,
+                brands,
+                categories,
+                list_filter(nutriments, n -> n.name = 'energy-kcal')[1]."100g" AS "energy-kcal_100g",
+                list_filter(nutriments, n -> n.name = 'carbohydrates')[1]."100g" AS carbohydrates_100g,
+                list_filter(nutriments, n -> n.name = 'sugars')[1]."100g" AS sugars_100g,
+                list_filter(nutriments, n -> n.name = 'fiber')[1]."100g" AS fiber_100g,
+                list_filter(nutriments, n -> n.name = 'proteins')[1]."100g" AS proteins_100g,
+                list_filter(nutriments, n -> n.name = 'fat')[1]."100g" AS fat_100g,
+                list_filter(nutriments, n -> n.name = 'saturated-fat')[1]."100g" AS "saturated-fat_100g",
+                list_filter(nutriments, n -> n.name = 'salt')[1]."100g" AS salt_100g,
+                nova_group,
+                nutriscore_grade,
+                list_filter(ingredients_text, x -> x.lang = 'en')[1].text AS ingredients_text,
+                'https://world.openfoodfacts.org/product/' || code AS url,
+                strftime(to_timestamp(last_modified_t), '%Y-%m-%dT%H:%M:%SZ') AS last_modified_datetime
+              FROM india_en_raw
+            )
+            SELECT *
+            FROM india_extracted
+            WHERE TRIM(code) <> ''
+              AND product_name IS NOT NULL
+              AND TRIM(product_name) <> ''
+          ) TO 'india_products.csv' (HEADER, DELIMITER ',');
+
+          SELECT count(*) AS row_count FROM read_csv('india_products.csv');
+          EOF
+
+      - name: Run query
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: duckdb < query.sql
+
+      - name: Upload CSV as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: india-products-csv
+          path: india_products.csv
+          retention-days: 30
+
+      - name: Commit CSV back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add india_products.csv
+          git diff --cached --quiet || git commit -m "Update India OFF products data ($(date -u +%Y-%m-%d))"
+          git push
